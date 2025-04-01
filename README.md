@@ -4,7 +4,12 @@ in `lib/`, and example unit test in `test/`.
 ```shell
 dart compile exe bin/repo_to_markdown.dart -o bin/repo_to_markdown
 sudo mv bin/repo_to_markdown /usr/local/bin/
-bin/repo_to_markdown --type java-maven
-bin/repo_to_markdown --output my_project.md
-bin/repo_to_markdown --help
+repo_to_markdown --type java-maven
+repo_to_markdown --output my_project.md
+repo_to_markdown --help
+repo_to_markdown --skip-dirs=build,node_modules --output my_project.md
+# 或者使用缩写
+repo_to_markdown -e build,node_modules
+# 如果还想指定输出文件名
+repo_to_markdown -e build,node_modules -o my_project_dump.md
 ```
