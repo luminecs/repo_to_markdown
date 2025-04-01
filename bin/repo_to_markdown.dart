@@ -1,35 +1,78 @@
-import 'package:repo_to_markdown/repo_to_markdown.dart' as repo_to_markdown;
+import 'dart:convert'; // For utf8 decoding
 import 'dart:io';
+
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
-import 'dart:convert'; // For utf8 decoding
-
 
 // --- Configuration ---
 const String outputFileName = 'project_content.md';
 // Add more text file extensions as needed
 const Set<String> textFileExtensions = {
-  '.txt', '.md', '.markdown',
-  '.java', '.groovy', '.scala', '.kt', // JVM
-  '.xml', '.yaml', '.yml', '.json', '.properties', '.gradle', // Config/Data
-  '.dart', '.js', '.ts', '.jsx', '.tsx', // Web/Dart
-  '.py', '.rb', '.php', // Scripting
-  '.c', '.cpp', '.h', '.hpp', '.cs', // C-like
-  '.go', '.rs', // Others
-  '.html', '.css', '.scss', '.less', // Web frontend
-  '.sh', '.bat', // Shell
+  '.txt',
+  '.md',
+  '.markdown',
+  '.java',
+  '.groovy',
+  '.scala',
+  '.kt',
+  // JVM
+  '.xml',
+  '.yaml',
+  '.yml',
+  '.json',
+  '.properties',
+  '.gradle',
+  // Config/Data
+  '.dart',
+  '.js',
+  '.ts',
+  '.jsx',
+  '.tsx',
+  // Web/Dart
+  '.py',
+  '.rb',
+  '.php',
+  // Scripting
+  '.c',
+  '.cpp',
+  '.h',
+  '.hpp',
+  '.cs',
+  // C-like
+  '.go',
+  '.rs',
+  // Others
+  '.html',
+  '.css',
+  '.scss',
+  '.less',
+  // Web frontend
+  '.sh',
+  '.bat',
+  // Shell
   '.sql',
   // Add files with no extension that are often text (like Dockerfile, Jenkinsfile)
-  'dockerfile', 'jenkinsfile', 'makefile', 'pom', // Check filename itself
-  '.gitignore', '.gitattributes', // Git specific text files
+  'dockerfile',
+  'jenkinsfile',
+  'makefile',
+  'pom',
+  // Check filename itself
+  '.gitignore',
+  '.gitattributes',
+  // Git specific text files
 };
 
 // --- Main Logic ---
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
-    ..addOption('type', abbr: 't', help: 'Specify the project type (e.g., java-maven).')
-    ..addOption('output', abbr: 'o', defaultsTo: outputFileName, help: 'Output Markdown file name.')
-    ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help message.');
+    ..addOption('type',
+        abbr: 't', help: 'Specify the project type (e.g., java-maven).')
+    ..addOption('output',
+        abbr: 'o',
+        defaultsTo: outputFileName,
+        help: 'Output Markdown file name.')
+    ..addFlag('help',
+        abbr: 'h', negatable: false, help: 'Show this help message.');
 
   ArgResults argResults;
   try {
@@ -63,23 +106,27 @@ Future<void> main(List<String> arguments) async {
     final pomFile = File(p.join(currentDirectory.path, 'pom.xml'));
     if (await pomFile.exists()) {
       print('Found pom.xml, adding it first.');
-      await processFile(pomFile, currentDirectory.path, outputBuffer, gitignorePatterns);
+      await processFile(
+          pomFile, currentDirectory.path, outputBuffer, gitignorePatterns);
       processedFiles.add(p.normalize(pomFile.path));
     } else {
-      print('Warning: Project type is java-maven, but pom.xml not found in the root.');
+      print(
+          'Warning: Project type is java-maven, but pom.xml not found in the root.');
     }
   }
 
   // --- Recursive File Traversal ---
   print('Scanning files...');
-  await for (final entity in currentDirectory.list(recursive: true, followLinks: false)) {
+  await for (final entity
+      in currentDirectory.list(recursive: true, followLinks: false)) {
     if (entity is File) {
       final normalizedPath = p.normalize(entity.path);
       // Skip if already processed (like pom.xml)
       if (processedFiles.contains(normalizedPath)) {
         continue;
       }
-      await processFile(entity, currentDirectory.path, outputBuffer, gitignorePatterns);
+      await processFile(
+          entity, currentDirectory.path, outputBuffer, gitignorePatterns);
     }
     // Optionally handle directories if needed later
   }
@@ -136,7 +183,8 @@ Future<List<RegExp>> loadGitignore(Directory rootDir) async {
 /// For full compliance, a dedicated package like `gitignore` is recommended.
 RegExp createGitignoreRegExp(String pattern) {
   // 1. Escape RegExp special characters
-  var regexString = pattern.replaceAllMapped(RegExp(r'[.*+?^${}()|[\]\\]'), (match) {
+  var regexString =
+      pattern.replaceAllMapped(RegExp(r'[.*+?^${}()|[\]\\]'), (match) {
     return '\\${match.group(0)}';
   });
 
@@ -149,11 +197,11 @@ RegExp createGitignoreRegExp(String pattern) {
   // Replace single '*' with '[^/]*' (match any char except path sep)
   regexString = regexString.replaceAll('*', '[^/]*');
 
-
   // 3. Handle leading/trailing slashes and directory matching
   bool dirOnly = pattern.endsWith('/');
   if (dirOnly) {
-    regexString = regexString.substring(0, regexString.length - 1); // Remove trailing / for regex
+    regexString = regexString.substring(
+        0, regexString.length - 1); // Remove trailing / for regex
   }
 
   if (!pattern.contains('/')) {
@@ -163,7 +211,8 @@ RegExp createGitignoreRegExp(String pattern) {
     // Let's keep it simpler: match if the pattern is contained within the relative path segment
     // This isn't perfect gitignore behaviour but simpler to implement.
     // Better: Check if relativePath.endsWith(pattern) or contains('/' + pattern)
-    regexString = '(^|/)$regexString(/|\$)'; // Crude attempt to match filename part
+    regexString =
+        '(^|/)$regexString(/|\$)'; // Crude attempt to match filename part
   } else if (pattern.startsWith('/')) {
     // Starts with '/', match only from root
     regexString = '^${regexString.substring(1)}';
@@ -175,7 +224,6 @@ RegExp createGitignoreRegExp(String pattern) {
     regexString = '(^|/)$regexString';
   }
 
-
   // If dirOnly, ensure it matches a directory (ends with / or is the whole path)
   // This is tricky to enforce perfectly with regex on the file path alone.
   // We'll rely on checking entity type later if needed, or ignore for now.
@@ -183,13 +231,13 @@ RegExp createGitignoreRegExp(String pattern) {
   // print('Gitignore pattern "$pattern" -> RegExp "$regexString"'); // Debugging
   try {
     return RegExp(regexString);
-  } catch(e) {
-    print("Warning: Could not compile gitignore pattern '$pattern' to RegExp: $e");
+  } catch (e) {
+    print(
+        "Warning: Could not compile gitignore pattern '$pattern' to RegExp: $e");
     // Return a regex that matches nothing
     return RegExp(r'^$');
   }
 }
-
 
 bool isIgnored(String relativePath, List<RegExp> gitignorePatterns) {
   // Normalize path separators for consistency, although Dart usually handles this
@@ -207,9 +255,11 @@ bool isIgnored(String relativePath, List<RegExp> gitignorePatterns) {
   return false;
 }
 
-Future<void> processFile(File file, String rootDir, StringBuffer buffer, List<RegExp> gitignorePatterns) async {
+Future<void> processFile(File file, String rootDir, StringBuffer buffer,
+    List<RegExp> gitignorePatterns) async {
   final relativePath = p.relative(file.path, from: rootDir);
-  final normalizedRelativePath = p.normalize(relativePath).replaceAll('\\', '/');
+  final normalizedRelativePath =
+      p.normalize(relativePath).replaceAll('\\', '/');
 
   // 1. Check if ignored by .gitignore
   if (isIgnored(normalizedRelativePath, gitignorePatterns)) {
@@ -237,10 +287,10 @@ Future<void> processFile(File file, String rootDir, StringBuffer buffer, List<Re
     try {
       content = utf8.decode(bytes); // Try UTF-8 decoding
     } catch (e) {
-      print('Skipping file with decoding error (likely not UTF-8 text): $relativePath. Error: $e');
+      print(
+          'Skipping file with decoding error (likely not UTF-8 text): $relativePath. Error: $e');
       return;
     }
-
 
     final cleanedContent = removeComments(content, file.path);
 
@@ -256,19 +306,18 @@ Future<void> processFile(File file, String rootDir, StringBuffer buffer, List<Re
     print('Adding file: $relativePath');
     buffer.writeln('---'); // Separator
     buffer.writeln();
-    buffer.writeln('**${relativePath.replaceAll('\\', '/')}**'); // Use forward slashes for Markdown consistency
+    buffer.writeln(
+        '**${relativePath.replaceAll('\\', '/')}**'); // Use forward slashes for Markdown consistency
     buffer.writeln();
     buffer.writeln('```$language');
     buffer.writeln(cleanedContent.trim()); // Trim leading/trailing whitespace
     buffer.writeln('```');
     buffer.writeln();
-
   } catch (e) {
     // Handle potential read errors (permissions, etc.)
     print('Error reading file $relativePath: $e');
   }
 }
-
 
 bool isLikelyTextFile(String filePath) {
   final extension = p.extension(filePath).toLowerCase();
@@ -294,45 +343,81 @@ bool isLikelyTextFile(String filePath) {
 String getMarkdownLanguage(String filePath) {
   final extension = p.extension(filePath).toLowerCase();
   switch (extension) {
-    case '.java': return 'java';
-    case '.xml': return 'xml';
-    case '.md': return 'markdown';
-    case '.dart': return 'dart';
-    case '.js': return 'javascript';
-    case '.ts': return 'typescript';
-    case '.jsx': return 'jsx';
-    case '.tsx': return 'tsx';
-    case '.py': return 'python';
-    case '.rb': return 'ruby';
-    case '.php': return 'php';
-    case '.yaml': case '.yml': return 'yaml';
-    case '.json': return 'json';
-    case '.html': return 'html';
-    case '.css': return 'css';
-    case '.scss': return 'scss';
-    case '.less': return 'less';
-    case '.sh': return 'shell'; // or bash
-    case '.sql': return 'sql';
-    case '.gradle': return 'groovy'; // or kotlin if .kts
-    case '.kt': case '.kts': return 'kotlin';
-    case '.c': return 'c';
-    case '.cpp': return 'cpp';
-    case '.h': case '.hpp': return 'cpp'; // Often C++ highlighting works for C headers
-    case '.cs': return 'csharp';
-    case '.go': return 'go';
-    case '.rs': return 'rust';
-    case '.properties': return 'properties';
-    case '.groovy': return 'groovy';
-    case '.scala': return 'scala';
-    case '.bat': return 'batch'; // or bat
-    case '.txt': return 'text'; // or plaintext
+    case '.java':
+      return 'java';
+    case '.xml':
+      return 'xml';
+    case '.md':
+      return 'markdown';
+    case '.dart':
+      return 'dart';
+    case '.js':
+      return 'javascript';
+    case '.ts':
+      return 'typescript';
+    case '.jsx':
+      return 'jsx';
+    case '.tsx':
+      return 'tsx';
+    case '.py':
+      return 'python';
+    case '.rb':
+      return 'ruby';
+    case '.php':
+      return 'php';
+    case '.yaml':
+    case '.yml':
+      return 'yaml';
+    case '.json':
+      return 'json';
+    case '.html':
+      return 'html';
+    case '.css':
+      return 'css';
+    case '.scss':
+      return 'scss';
+    case '.less':
+      return 'less';
+    case '.sh':
+      return 'shell'; // or bash
+    case '.sql':
+      return 'sql';
+    case '.gradle':
+      return 'groovy'; // or kotlin if .kts
+    case '.kt':
+    case '.kts':
+      return 'kotlin';
+    case '.c':
+      return 'c';
+    case '.cpp':
+      return 'cpp';
+    case '.h':
+    case '.hpp':
+      return 'cpp'; // Often C++ highlighting works for C headers
+    case '.cs':
+      return 'csharp';
+    case '.go':
+      return 'go';
+    case '.rs':
+      return 'rust';
+    case '.properties':
+      return 'properties';
+    case '.groovy':
+      return 'groovy';
+    case '.scala':
+      return 'scala';
+    case '.bat':
+      return 'batch'; // or bat
+    case '.txt':
+      return 'text'; // or plaintext
     default:
-    // For files without extension, check filename
+      // For files without extension, check filename
       final filename = p.basename(filePath).toLowerCase();
       if (filename == 'dockerfile') return 'dockerfile';
       if (filename == 'makefile') return 'makefile';
       if (filename == 'jenkinsfile') return 'groovy'; // Often Groovy
-      if (filename == 'pom.xml') return 'xml'; // Explicitly handle pom.xml if extension logic missed it
+      if (filename == 'pom.xml')
+        return 'xml'; // Explicitly handle pom.xml if extension logic missed it
       return 'plaintext'; // Default fallback
   }
 }
@@ -343,42 +428,83 @@ String removeComments(String content, String filePath) {
 
   try {
     // C-style comments (Java, JS, Dart, C++, C#, etc.)
-    if (const {'.java', '.js', '.ts', '.dart', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.scala', '.kt', '.groovy'}.contains(extension)) {
+    if (const {
+      '.java',
+      '.js',
+      '.ts',
+      '.dart',
+      '.c',
+      '.cpp',
+      '.h',
+      '.hpp',
+      '.cs',
+      '.go',
+      '.rs',
+      '.scala',
+      '.kt',
+      '.groovy'
+    }.contains(extension)) {
       // Remove block comments /* ... */ (non-greedy)
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'/\*[\s\S]*?\*/', multiLine: true), '');
+      cleanedContent = cleanedContent.replaceAll(
+          RegExp(r'/\*[\s\S]*?\*/', multiLine: true), '');
       // Remove single-line comments // ...
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'//.*', multiLine: true), '');
+      cleanedContent =
+          cleanedContent.replaceAll(RegExp(r'//.*', multiLine: true), '');
     }
     // XML/HTML comments <!-- ... -->
-    else if (const {'.xml', '.html', '.md', '.vue'}.contains(extension) || p.basename(filePath).toLowerCase() == 'pom.xml') { // Include pom.xml here explicitly
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'<!--[\s\S]*?-->', multiLine: true), '');
+    else if (const {'.xml', '.html', '.md', '.vue'}.contains(extension) ||
+        p.basename(filePath).toLowerCase() == 'pom.xml') {
+      // Include pom.xml here explicitly
+      cleanedContent = cleanedContent.replaceAll(
+          RegExp(r'<!--[\s\S]*?-->', multiLine: true), '');
       // Also remove // and /* */ if it's markdown, as code blocks inside might use them
       if (extension == '.md') {
-        cleanedContent = cleanedContent.replaceAll(RegExp(r'/\*[\s\S]*?\*/', multiLine: true), '');
-        cleanedContent = cleanedContent.replaceAll(RegExp(r'//.*', multiLine: true), '');
+        cleanedContent = cleanedContent.replaceAll(
+            RegExp(r'/\*[\s\S]*?\*/', multiLine: true), '');
+        cleanedContent =
+            cleanedContent.replaceAll(RegExp(r'//.*', multiLine: true), '');
       }
     }
     // Hash comments (Python, Ruby, Shell, Yaml, Dockerfile, etc.)
-    else if (const {'.py', '.rb', '.sh', '.yaml', '.yml', '.properties', '.gitignore'}.contains(extension) || const {'dockerfile', 'makefile'}.contains(p.basename(filePath).toLowerCase())) {
+    else if (const {
+          '.py',
+          '.rb',
+          '.sh',
+          '.yaml',
+          '.yml',
+          '.properties',
+          '.gitignore'
+        }.contains(extension) ||
+        const {'dockerfile', 'makefile'}
+            .contains(p.basename(filePath).toLowerCase())) {
       // Important: Match '#' only at the beginning of a line or after whitespace
       // to avoid removing parts of URLs or other strings.
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'^\s*#.*|(?<=\s)#.*', multiLine: true), '');
+      cleanedContent = cleanedContent.replaceAll(
+          RegExp(r'^\s*#.*|(?<=\s)#.*', multiLine: true), '');
     }
     // SQL comments -- ... and /* ... */
     else if (extension == '.sql') {
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'/\*[\s\S]*?\*/', multiLine: true), '');
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'--.*', multiLine: true), '');
+      cleanedContent = cleanedContent.replaceAll(
+          RegExp(r'/\*[\s\S]*?\*/', multiLine: true), '');
+      cleanedContent =
+          cleanedContent.replaceAll(RegExp(r'--.*', multiLine: true), '');
     }
     // Batch file comments REM or ::
     else if (extension == '.bat') {
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'^\s*::.*|^\s*REM\s.*', caseSensitive: false, multiLine: true), '');
+      cleanedContent = cleanedContent.replaceAll(
+          RegExp(r'^\s*::.*|^\s*REM\s.*',
+              caseSensitive: false, multiLine: true),
+          '');
     }
 
     // Remove empty lines that might result from comment removal
-    cleanedContent = cleanedContent.split('\n').where((line) => line.trim().isNotEmpty).join('\n');
-
+    cleanedContent = cleanedContent
+        .split('\n')
+        .where((line) => line.trim().isNotEmpty)
+        .join('\n');
   } catch (e) {
-    print("Warning: Error removing comments from $filePath (Regex might be invalid or too complex): $e");
+    print(
+        "Warning: Error removing comments from $filePath (Regex might be invalid or too complex): $e");
     // Return original content on error
     return content;
   }
