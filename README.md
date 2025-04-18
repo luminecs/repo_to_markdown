@@ -1,6 +1,8 @@
 A sample command-line application with an entrypoint in `bin/`, library code
 in `lib/`, and example unit test in `test/`.
 
+### repo_to_markdown
+
 ```shell
 dart compile exe bin/repo_to_markdown.dart -o bin/repo_to_markdown
 sudo mv bin/repo_to_markdown /usr/local/bin/
@@ -21,4 +23,13 @@ repo_to_markdown --skip-patterns "Test*.java" -o repo.md
 repo_to_markdown --skip-patterns "*_backup.*,*.cache" -o repo.md
 # 跳过 build 目录、.class 文件以及所有 Example*.java 文件
 repo_to_markdown --skip-dirs build --skip-extensions .class --skip-patterns "Example*.java" -o repo.md
+```
+
+
+### remove_java_comments
+
+```shell
+dart compile exe bin/remove_java_comments.dart -o bin/remove_java_comments
+sudo mv bin/remove_java_comments /usr/local/bin/
+remove_java_comments /path/to/your/java/project
 ```
