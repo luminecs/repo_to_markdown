@@ -666,7 +666,7 @@ String removeComments(String content, String filePath) {
       cleanedContent = cleanedContent.replaceAll(
           RegExp(r'/\*.*?\*/', multiLine: true, dotAll: true), '');
       // 移除行注释 // ...
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'//.*'), '');
+      cleanedContent = cleanedContent.replaceAll(RegExp(r'(?<!:)\/\/.*'), '');
     }
     // XML/HTML/Markdown 注释 <!-- ... -->
     else if (const {'.xml', '.html', '.md', '.vue'}.contains(extension) ||
