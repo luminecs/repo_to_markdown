@@ -59,6 +59,7 @@ const Set<String> textFileExtensions = {
   'pom', // 检查文件名本身
   '.gitignore',
   '.gitattributes', // Git 特定文本文件
+  '.jte', // jte 模板
 };
 
 // --- 主要逻辑 ---
