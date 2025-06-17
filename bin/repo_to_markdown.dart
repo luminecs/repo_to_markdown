@@ -46,6 +46,7 @@ const Set<String> textFileExtensions = {
   '.css',
   '.scss',
   '.less',
+  '.vue', // 新增(1/3): 识别 Vue 文件扩展名
   // Web 前端
   '.sh',
   '.bat',
@@ -602,7 +603,6 @@ bool isLikelyTextFile(String filePath) {
 
 // 根据文件路径获取 Markdown 代码块的语言标识符
 String getMarkdownLanguage(String filePath) {
-  // (之前的实现保持不变)
   final extension = p.extension(filePath).toLowerCase();
   switch (extension) {
     case '.java': return 'java';
@@ -622,6 +622,7 @@ String getMarkdownLanguage(String filePath) {
     case '.css': return 'css';
     case '.scss': return 'scss';
     case '.less': return 'less';
+    case '.vue': return 'vue'; // 新增(2/3): 为 Vue 文件指定语言标识符
     case '.sh': return 'shell';
     case '.sql': return 'sql';
     case '.gradle': return 'groovy'; // .gradle 文件通常是 Groovy
@@ -652,14 +653,25 @@ String getMarkdownLanguage(String filePath) {
 
 // 根据文件类型移除代码注释
 String removeComments(String content, String filePath) {
-  // (之前的实现保持不变)
   final extension = p.extension(filePath).toLowerCase();
   final filename = p.basename(filePath).toLowerCase();
   String cleanedContent = content;
 
   try {
+    // 新增(3/3): 为 Vue 文件提供专门的注释移除逻辑
+    if (extension == '.vue') {
+      // 1. 移除 HTML 风格的注释 <!-- ... --> (用于 <template>)
+      cleanedContent = cleanedContent.replaceAll(
+          RegExp(r'<!--.*?-->', multiLine: true, dotAll: true), '');
+      // 2. 移除 C 风格的块注释 /* ... */ (用于 <script> 和 <style>)
+      cleanedContent = cleanedContent.replaceAll(
+          RegExp(r'/\*.*?\*/', multiLine: true, dotAll: true), '');
+      // 3. 移除 C 风格的行注释 // ... (用于 <script>)
+      cleanedContent = cleanedContent.replaceAll(RegExp(r'(?<!:)\/\/.*'), '');
+    }
     // C 风格注释 (Java, JS, TS, Dart, C, C++, C#, Go, Rust, Scala, Kotlin, Groovy)
-    if (const {
+    // 注意这里的 'else if' 确保 Vue 文件不会被再次处理
+    else if (const {
       '.java', '.js', '.ts', '.dart', '.c', '.cpp', '.h', '.hpp', '.cs',
       '.go', '.rs', '.scala', '.kt', '.groovy'
     }.contains(extension)) {
@@ -670,7 +682,7 @@ String removeComments(String content, String filePath) {
       cleanedContent = cleanedContent.replaceAll(RegExp(r'(?<!:)\/\/.*'), '');
     }
     // XML/HTML/Markdown 注释 <!-- ... -->
-    else if (const {'.xml', '.html', '.md', '.vue'}.contains(extension) ||
+    else if (const {'.xml', '.html', '.md'}.contains(extension) ||
         filename == 'pom.xml') { // pom.xml 是 XML
       cleanedContent = cleanedContent.replaceAll(
           RegExp(r'<!--.*?-->', multiLine: true, dotAll: true), '');
