@@ -567,7 +567,6 @@ Future<void> processFile(
 
     // 4. 追加到缓冲区
     print('添加文件: $normalizedRelativePath'); // 确认添加
-    buffer.writeln('---');
     buffer.writeln();
     buffer.writeln('**$normalizedRelativePath**'); // 文件路径作为标题
     buffer.writeln();
