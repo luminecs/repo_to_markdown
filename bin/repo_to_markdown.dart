@@ -293,10 +293,14 @@ bool shouldSkip(
   }
 
   // 2. 如果是目录，检查 --skip-dirs
-  if (isDirectory && skipDirs != null) {
-    // 精确匹配或作为父目录匹配
-    for (final skipDir in skipDirs) {
-      if (normalizedRelativePath == skipDir || normalizedRelativePath.startsWith('$skipDir/')) {
+  if (isDirectory && skipDirs != null && skipDirs.isNotEmpty) {
+    // --- **修改点：实现递归目录排除** ---
+    // 将相对路径拆分为各个部分（例如 "a/b/c" -> ["a", "b", "c"]）
+    final pathComponents = p.split(normalizedRelativePath);
+    // 检查路径的任何一个部分是否在要跳过的目录名集合中
+    for (final component in pathComponents) {
+      if (skipDirs.contains(component)) {
+        // 只要路径中任何一级目录名匹配，就跳过整个目录
         return true;
       }
     }
