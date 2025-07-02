@@ -569,15 +569,26 @@ Future<void> processFile(
     // 获取 Markdown 语言标识符
     final language = getMarkdownLanguage(file.path);
 
+    // --- 缓冲区写入逻辑修改开始 ---
     // 4. 追加到缓冲区
     print('添加文件: $normalizedRelativePath'); // 确认添加
-    buffer.writeln();
+
+    // 关键点: 仅在缓冲区非空时（即，这不是第一个文件）才添加分隔空行。
+    // 这可以同时解决文件开头多一个空行和文件间多一个空行的问题。
+    if (buffer.isNotEmpty) {
+      buffer.writeln(); // 在文件块之间添加一个空行作为分隔符
+    }
+
     buffer.writeln('**$normalizedRelativePath**'); // 文件路径作为标题
-    buffer.writeln();
+    buffer.writeln(); // 在标题和代码块之间保留一个空行
     buffer.writeln('```$language'); // 代码块开始，指定语言
     buffer.writeln(cleanedContent.trim()); // 清理后的内容
     buffer.writeln('```'); // 代码块结束
-    buffer.writeln(); // 添加空行分隔
+
+    // 之前的代码在这里和文件块的开头都有 buffer.writeln()，导致了重复。
+    // 将分隔逻辑统一放到文件块的开头后，此处就不再需要了。
+    // --- 缓冲区写入逻辑修改结束 ---
+
   } on FileSystemException catch (e) {
     // 捕获读取文件时可能发生的其他文件系统错误
     print('错误：读取文件 $normalizedRelativePath 失败: $e');
@@ -678,7 +689,6 @@ String removeComments(String content, String filePath) {
       '.java', '.js', '.ts', '.dart', '.c', '.cpp', '.h', '.hpp', '.cs',
       '.go', '.rs', '.scala', '.kt', '.groovy'
     }.contains(extension)) {
-      // --- 修改开始: 采用更健壮的注释移除方法 ---
       // 旧方法会错误地处理字符串中的注释标记，例如在 "a*/*b" 中。
       // 新方法使用一个正则表达式一次性匹配字符串、块注释和行注释。
       // 然后，在替换逻辑中，我们只移除注释，而保留字符串，从而避免问题。
@@ -704,7 +714,6 @@ String removeComments(String content, String filePath) {
           return match.group(0)!;
         }
       });
-      // --- 修改结束 ---
     }
     // XML/HTML/Markdown 注释 <!-- ... -->
     else if (const {'.xml', '.html', '.md'}.contains(extension) ||
@@ -723,7 +732,6 @@ String removeComments(String content, String filePath) {
     }
     // SQL 注释 -- ... 和 /* ... */
     else if (extension == '.sql') {
-      // --- 修改开始: 采用与C风格类似的方法来健壮地移除注释 ---
       // SQL中的块注释 /*...*/ 也存在同样的问题，可能错误地处理字符串中的注释标记。
       final sqlRegex = RegExp(
         // 第1组: 匹配单引号字符串 '...'。SQL使用两个单引号 '' 来表示字符串中的一个单引号。
@@ -746,7 +754,6 @@ String removeComments(String content, String filePath) {
           return match.group(0)!;
         }
       });
-      // --- 修改结束 ---
     }
     // Batch (.bat) 注释 REM ... 或 :: ...
     else if (extension == '.bat') {
