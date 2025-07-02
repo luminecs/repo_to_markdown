@@ -83,6 +83,9 @@ Future<void> main(List<String> arguments) async {
         abbr: 'p', // 'p' for patterns
         defaultsTo: '',
         help: '需要跳过的文件名通配符模式列表，以逗号分隔 (例如 "Test*.java,*.tmp")。')
+    ..addOption('keep-comments-config',
+        abbr: 'k',
+        help: '指定一个配置文件(.txt)，文件中的路径（文件或目录）将保留注释。')
     ..addFlag('help', abbr: 'h', negatable: false, help: '显示此帮助信息。');
 
   ArgResults argResults;
@@ -104,6 +107,7 @@ Future<void> main(List<String> arguments) async {
   final skipDirsRaw = argResults['skip-dirs'] as String;
   final skipExtensionsRaw = argResults['skip-extensions'] as String; // 获取原始后缀字符串
   final skipPatternsRaw = argResults['skip-patterns'] as String; // 获取原始模式字符串
+  final keepCommentsConfigFile = argResults['keep-comments-config'] as String?;
   final currentDirectory = Directory.current;
 
   // 解析并规范化要跳过的目录
@@ -137,6 +141,29 @@ Future<void> main(List<String> arguments) async {
     }
   }
 
+  final Set<String> keepCommentsPaths = {};
+  if (keepCommentsConfigFile != null && keepCommentsConfigFile.isNotEmpty) {
+    final configFile = File(keepCommentsConfigFile);
+    if (await configFile.exists()) {
+      print('正在从 $keepCommentsConfigFile 加载保留注释的路径...');
+      try {
+        final lines = await configFile.readAsLines();
+        for (final line in lines) {
+          final trimmedLine = line.trim();
+          if (trimmedLine.isNotEmpty && !trimmedLine.startsWith('#')) {
+            // 规范化路径，统一使用 / 作为分隔符，并添加到集合中
+            keepCommentsPaths.add(p.normalize(trimmedLine).replaceAll('\\', '/'));
+          }
+        }
+        print('加载了 ${keepCommentsPaths.length} 条保留注释的路径规则。');
+      } catch (e) {
+        print('警告: 读取或解析保留注释配置文件 $keepCommentsConfigFile 时出错: $e');
+      }
+    } else {
+      print('警告: 指定的保留注释配置文件 $keepCommentsConfigFile 不存在。');
+    }
+  }
+
 
   print('开始分析目录: ${currentDirectory.path}');
   print('项目类型: ${projectType ?? '未指定'}');
@@ -150,6 +177,10 @@ Future<void> main(List<String> arguments) async {
   if (skipPatternsRegex.isNotEmpty) { // 打印要跳过的模式
     print('将跳过匹配以下模式的文件: ${skipPatternsRaw}'); // 打印原始模式更易读
   }
+  if (keepCommentsPaths.isNotEmpty) {
+    print('将对以下路径（及其子路径）保留注释: ${keepCommentsPaths.join(', ')}');
+  }
+
 
   // 加载 .gitignore 规则，并始终忽略输出文件本身和 .git 目录
   final gitignorePatterns = await loadGitignore(currentDirectory, outputFile);
@@ -167,8 +198,15 @@ Future<void> main(List<String> arguments) async {
       final normalizedRelativePomPath = p.normalize(relativePomPath).replaceAll('\\', '/');
       // 检查 pom.xml 是否需要跳过
       if (!shouldSkip(normalizedRelativePomPath, skipDirs, gitignorePatterns, skipExtensions, skipPatternsRegex, isDirectory: false)) {
+        bool keepCommentsForPom = false;
+        for (final keepPath in keepCommentsPaths) {
+          if (normalizedRelativePomPath == keepPath) {
+            keepCommentsForPom = true;
+            break;
+          }
+        }
         await processFile(
-            pomFile, currentDirectory.path, outputBuffer, gitignorePatterns, skipExtensions, skipPatternsRegex, normalizedRelativePomPath);
+            pomFile, currentDirectory.path, outputBuffer, gitignorePatterns, skipExtensions, skipPatternsRegex, keepCommentsForPom, normalizedRelativePomPath);
         processedFiles.add(p.normalize(pomFile.path)); // 记录已处理
       } else {
         print('注意: pom.xml 根据跳过规则被跳过。');
@@ -188,7 +226,8 @@ Future<void> main(List<String> arguments) async {
       gitignorePatterns,
       skipExtensions,
       skipPatternsRegex,
-      processedFiles // 传递已处理集合，避免重复处理 (如 pom.xml)
+      processedFiles, // 传递已处理集合，避免重复处理 (如 pom.xml)
+      keepCommentsPaths // 传递保留注释的路径集合
   );
 
   // --- 写入输出 ---
@@ -211,7 +250,8 @@ Future<void> processDirectoryRecursively(
     List<RegExp> gitignorePatterns,
     Set<String> skipExtensions,
     List<RegExp> skipPatternsRegex,
-    Set<String> processedFiles // 跟踪已处理文件
+    Set<String> processedFiles, // 跟踪已处理文件
+    Set<String> keepCommentsPaths // 接收保留注释的路径集合
     ) async {
 
   final relativeDirPath = p.relative(directory.path, from: rootDir);
@@ -241,7 +281,7 @@ Future<void> processDirectoryRecursively(
     final isDir = entity is Directory;
 
     if (isDir) {
-      // 对于子目录，递归调用
+      // 对于子目录，递归调用，并传递路径集合
       await processDirectoryRecursively(
           entity as Directory,
           rootDir,
@@ -250,7 +290,8 @@ Future<void> processDirectoryRecursively(
           gitignorePatterns,
           skipExtensions,
           skipPatternsRegex,
-          processedFiles);
+          processedFiles,
+          keepCommentsPaths); // 在递归中继续传递
     } else if (entity is File) {
       final normalizedAbsolutePath = p.normalize(entity.path);
       // 如果文件已被特殊处理过（例如 pom.xml），则跳过
@@ -260,8 +301,19 @@ Future<void> processDirectoryRecursively(
 
       // 检查文件是否应被跳过
       if (!shouldSkip(normalizedRelativePath, null, gitignorePatterns, skipExtensions, skipPatternsRegex, isDirectory: false)) {
-        // 处理文件
-        await processFile(entity, rootDir, buffer, gitignorePatterns, skipExtensions, skipPatternsRegex, normalizedRelativePath);
+        // 检查此文件是否需要保留注释
+        bool shouldPreserveComments = false;
+        // 遍历所有需要保留注释的路径规则
+        for (final keepPath in keepCommentsPaths) {
+          // 检查是精确的文件匹配，还是位于需要保留注释的目录下
+          if (normalizedRelativePath == keepPath || normalizedRelativePath.startsWith('$keepPath/')) {
+            shouldPreserveComments = true;
+            break; // 找到匹配规则后即可中断循环
+          }
+        }
+
+        // 处理文件，并传入是否保留注释的标志
+        await processFile(entity, rootDir, buffer, gitignorePatterns, skipExtensions, skipPatternsRegex, shouldPreserveComments, normalizedRelativePath);
       } else {
         // print('Skipping file due to rules: $normalizedRelativePath'); // 可选调试输出
       }
@@ -505,7 +557,6 @@ bool isIgnored(String relativePath, List<RegExp> gitignorePatterns, {required bo
 
 
 // 处理单个文件：检查是否文本、读取内容、移除注释并添加到缓冲区
-// 参数略有调整，移除了 redundant 的 skipXXX 检查，因为它们在调用前已完成
 Future<void> processFile(
     File file,
     String rootDir,
@@ -513,6 +564,7 @@ Future<void> processFile(
     List<RegExp> gitignorePatterns, // 仍然需要检查单个文件的 gitignore 规则
     Set<String> skipExtensions, // 保留用于isLikelyTextFile和语言确定可能需要
     List<RegExp> skipPatternsRegex, // 保留，以防万一
+    bool keepComments, // 是否保留此文件的注释
     [String? normalizedRelativePath]) async { // 可选的相对路径
 
   // 如果未提供，则计算相对路径 (理论上总会被提供)
@@ -532,7 +584,7 @@ Future<void> processFile(
     return;
   }
 
-  // 3. 读取内容并移除注释
+  // 3. 读取内容并根据条件移除注释
   try {
     // 读取前先检查文件大小，避免读取巨大文件（可选）
     // final fileStat = await file.stat();
@@ -557,10 +609,17 @@ Future<void> processFile(
       return; // 跳过无法解码的文件
     }
 
-    // 移除注释
-    final cleanedContent = removeComments(content, file.path);
+    // 根据 keepComments 标志决定是否移除注释
+    String cleanedContent;
+    if (keepComments) {
+      // 如果标志为 true，则保留原始内容（包括注释）
+      cleanedContent = content;
+    } else {
+      // 否则，执行移除注释的逻辑
+      cleanedContent = removeComments(content, file.path);
+    }
 
-    // 如果移除注释后内容为空，则跳过
+    // 如果处理后内容为空，则跳过
     if (cleanedContent.trim().isEmpty) {
       // print('跳过（注释移除后）空文件: $normalizedRelativePath');
       return;
@@ -571,7 +630,11 @@ Future<void> processFile(
 
     // --- 缓冲区写入逻辑修改开始 ---
     // 4. 追加到缓冲区
-    print('添加文件: $normalizedRelativePath'); // 确认添加
+    if (keepComments) {
+      print('添加文件 (保留注释): $normalizedRelativePath'); // 确认添加并指明保留了注释
+    } else {
+      print('添加文件: $normalizedRelativePath'); // 确认添加
+    }
 
     // 关键点: 仅在缓冲区非空时（即，这不是第一个文件）才添加分隔空行。
     // 这可以同时解决文件开头多一个空行和文件间多一个空行的问题。
