@@ -678,11 +678,33 @@ String removeComments(String content, String filePath) {
       '.java', '.js', '.ts', '.dart', '.c', '.cpp', '.h', '.hpp', '.cs',
       '.go', '.rs', '.scala', '.kt', '.groovy'
     }.contains(extension)) {
-      // 移除块注释 /* ... */ (非贪婪匹配)
-      cleanedContent = cleanedContent.replaceAll(
-          RegExp(r'/\*.*?\*/', multiLine: true, dotAll: true), '');
-      // 移除行注释 // ...
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'(?<!:)\/\/.*'), '');
+      // --- 修改开始: 采用更健壮的注释移除方法 ---
+      // 旧方法会错误地处理字符串中的注释标记，例如在 "a*/*b" 中。
+      // 新方法使用一个正则表达式一次性匹配字符串、块注释和行注释。
+      // 然后，在替换逻辑中，我们只移除注释，而保留字符串，从而避免问题。
+      final cStyleRegex = RegExp(
+        // 第1组: 匹配双引号字符串。处理内部的转义字符，例如 \"。
+        r'("(?:\\[\s\S]|[^"\\])*")'
+        // 第2组: 匹配单引号字符串。同样处理转义字符。
+        r"|('(?:\\[\s\S]|[^'\\])*')"
+        // 第3组: 匹配C风格的块注释 /* ... */。[\s\S] 用来匹配包括换行符在内的任何字符。
+        r'|(/\*[\s\S]*?\*/)'
+        // 第4组: 匹配C风格的行注释 // ...。(?<!:)确保不会匹配 "http://"。
+        r'|((?<!:)\/\/.*)',
+        multiLine: true,
+      );
+
+      cleanedContent = cleanedContent.replaceAllMapped(cStyleRegex, (match) {
+        // 如果第3组 (块注释) 或第4组 (行注释) 不为null，说明匹配到了注释。
+        if (match.group(3) != null || match.group(4) != null) {
+          // 是注释，用空字符串替换，即删除。
+          return '';
+        } else {
+          // 是字符串字面量，原样返回。
+          return match.group(0)!;
+        }
+      });
+      // --- 修改结束 ---
     }
     // XML/HTML/Markdown 注释 <!-- ... -->
     else if (const {'.xml', '.html', '.md'}.contains(extension) ||
@@ -701,9 +723,30 @@ String removeComments(String content, String filePath) {
     }
     // SQL 注释 -- ... 和 /* ... */
     else if (extension == '.sql') {
-      cleanedContent = cleanedContent.replaceAll(
-          RegExp(r'/\*.*?\*/', multiLine: true, dotAll: true), '');
-      cleanedContent = cleanedContent.replaceAll(RegExp(r'--.*'), '');
+      // --- 修改开始: 采用与C风格类似的方法来健壮地移除注释 ---
+      // SQL中的块注释 /*...*/ 也存在同样的问题，可能错误地处理字符串中的注释标记。
+      final sqlRegex = RegExp(
+        // 第1组: 匹配单引号字符串 '...'。SQL使用两个单引号 '' 来表示字符串中的一个单引号。
+        r"('(''|[^'])*')"
+        // 第2组: 匹配（某些方言中的）双引号标识符 "..."。
+        r'|("(""|[^"])*")'
+        // 第3组: 匹配C风格的块注释 /* ... */。
+        r'|(/\*[\s\S]*?\*/)'
+        // 第4组: 匹配SQL风格的行注释 -- ...
+        r'|(--.*)',
+        multiLine: true,
+      );
+      cleanedContent = cleanedContent.replaceAllMapped(sqlRegex, (match) {
+        // 如果第3组 (块注释) 或第4组 (行注释) 不为null，说明匹配到了注释。
+        if (match.group(3) != null || match.group(4) != null) {
+          // 是注释，用空字符串替换，即删除。
+          return '';
+        } else {
+          // 是字符串字面量或带引号的标识符，原样返回。
+          return match.group(0)!;
+        }
+      });
+      // --- 修改结束 ---
     }
     // Batch (.bat) 注释 REM ... 或 :: ...
     else if (extension == '.bat') {
