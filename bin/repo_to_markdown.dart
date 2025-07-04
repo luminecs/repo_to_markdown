@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart'; // --- 新增: 导入 YAML 解析库 ---
 
 // --- 配置 ---
 const String outputFileNameDefault = 'project_content.md'; // 默认输出文件名
@@ -66,6 +67,12 @@ const Set<String> textFileExtensions = {
 // --- 主要逻辑 ---
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
+  // --- 新增/修改区域开始 ---
+  // 添加一个新的选项来指定配置文件路径
+    ..addOption('config',
+        abbr: 'c',
+        help: '指定一个 YAML 配置文件路径。如果未指定，将自动尝试加载当前目录的 "repo_config.yml"。')
+  // --- 新增/修改区域结束 ---
     ..addOption('type', abbr: 't', help: '指定项目类型 (例如, java-maven)。')
     ..addOption('output',
         abbr: 'o',
@@ -85,7 +92,7 @@ Future<void> main(List<String> arguments) async {
         help: '需要跳过的文件名通配符模式列表，以逗号分隔 (例如 "Test*.java,*.tmp")。')
     ..addOption('keep-comments-config',
         abbr: 'k',
-        help: '指定一个配置文件(.txt)，文件中的路径（文件或目录）将保留注释。')
+        help: '指定一个配置文件(.txt)，文件中的路径（文件或目录）将保留注释。此选项用于向后兼容或补充YAML配置。')
     ..addFlag('help', abbr: 'h', negatable: false, help: '显示此帮助信息。');
 
   ArgResults argResults;
@@ -102,12 +109,82 @@ Future<void> main(List<String> arguments) async {
     exit(0);
   }
 
-  final projectType = argResults['type'] as String?;
-  final outputFile = argResults['output'] as String;
-  final skipDirsRaw = argResults['skip-dirs'] as String;
-  final skipExtensionsRaw = argResults['skip-extensions'] as String; // 获取原始后缀字符串
-  final skipPatternsRaw = argResults['skip-patterns'] as String; // 获取原始模式字符串
-  final keepCommentsConfigFile = argResults['keep-comments-config'] as String?;
+  // --- 新增/修改区域开始: 优化配置文件加载逻辑 ---
+
+  // 1. 决定要加载的配置文件路径
+  String? configFilePath;
+  bool isDefaultConfigFile = false; // 标记是否正在使用默认配置文件路径
+
+  if (argResults.wasParsed('config')) {
+    // 优先级 1: 用户通过命令行明确指定了配置文件
+    configFilePath = argResults['config'] as String?;
+  } else {
+    // 优先级 2: 用户未指定，自动使用默认路径
+    configFilePath = 'repo_config.yml';
+    isDefaultConfigFile = true;
+  }
+
+  // 2. 加载 YAML 配置文件
+  final Map<String, dynamic> config = {};
+  if (configFilePath != null && configFilePath.isNotEmpty) {
+    final configFile = File(configFilePath);
+    if (await configFile.exists()) {
+      print('正在从配置文件加载设置: $configFilePath');
+      try {
+        final yamlString = await configFile.readAsString();
+        final yamlContent = loadYaml(yamlString);
+        if (yamlContent is YamlMap) {
+          // 将 YamlMap 转换为标准的 Dart Map
+          config.addAll(Map<String, dynamic>.from(yamlContent));
+        }
+      } catch (e) {
+        print('警告: 读取或解析 YAML 配置文件 $configFilePath 时出错: $e');
+      }
+    } else {
+      // 如果文件不存在，根据情况给出不同提示
+      if (!isDefaultConfigFile) {
+        // 用户明确指定了文件但找不到，这是一个需要提醒的警告
+        print('警告: 指定的配置文件 $configFilePath 不存在，将忽略。');
+      } else {
+        // 默认文件找不到是正常情况，无需警告，可以静默处理或给一个信息提示
+        // print('信息: 未在当前目录找到默认配置文件 "repo_config.yml"。');
+      }
+    }
+  }
+
+  // 3. 按优先级确定最终配置值 (此部分逻辑不变)
+  // 优先级规则: 命令行参数 > YAML 配置 > 默认值
+
+  // 辅助函数，用于处理从 YAML 读取的列表或字符串
+  String _getStringFromConfig(dynamic value) {
+    if (value is List) {
+      return value.map((e) => e.toString()).join(',');
+    }
+    return value as String? ?? '';
+  }
+
+  // 获取最终配置值
+  final projectType = argResults.wasParsed('type')
+      ? argResults['type'] as String?
+      : config['type'] as String? ?? (argResults['type'] as String?);
+
+  final outputFile = argResults.wasParsed('output')
+      ? argResults['output'] as String
+      : config['output'] as String? ?? argResults['output'] as String;
+
+  final skipDirsRaw = argResults.wasParsed('skip-dirs')
+      ? argResults['skip-dirs'] as String
+      : _getStringFromConfig(config['skip-dirs'] ?? argResults['skip-dirs']);
+
+  final skipExtensionsRaw = argResults.wasParsed('skip-extensions')
+      ? argResults['skip-extensions'] as String
+      : _getStringFromConfig(config['skip-extensions'] ?? argResults['skip-extensions']);
+
+  final skipPatternsRaw = argResults.wasParsed('skip-patterns')
+      ? argResults['skip-patterns'] as String
+      : _getStringFromConfig(config['skip-patterns'] ?? argResults['skip-patterns']);
+  // --- 新增/修改区域结束 ---
+
   final currentDirectory = Directory.current;
 
   // 解析并规范化要跳过的目录
@@ -141,21 +218,43 @@ Future<void> main(List<String> arguments) async {
     }
   }
 
+  // --- 新增/修改区域开始: 整合所有需要保留注释的路径 (此部分逻辑不变) ---
+
+  // 1. 初始化一个集合来存放所有需要保留注释的路径
   final Set<String> keepCommentsPaths = {};
+
+  // 2. 从 YAML 配置中的 `keep-comments-paths` 列表加载路径 (新功能)
+  if (config['keep-comments-paths'] is YamlList) {
+    print('正在从 YAML 配置中的 `keep-comments-paths` 加载路径...');
+    final List<dynamic> pathsFromYaml = config['keep-comments-paths'];
+    for (final path in pathsFromYaml) {
+      final trimmedPath = path.toString().trim();
+      if (trimmedPath.isNotEmpty) {
+        // 规范化路径并添加到集合中
+        keepCommentsPaths.add(p.normalize(trimmedPath).replaceAll('\\', '/'));
+      }
+    }
+  }
+
+  // 3. 从 `--keep-comments-config` 文件加载路径 (为了向后兼容和命令行补充)
+  // 这个值可能是由命令行参数 `--keep-comments-config` 或旧的YAML键 `keep-comments-config` 提供的。
+  final keepCommentsConfigFile = argResults.wasParsed('keep-comments-config')
+      ? argResults['keep-comments-config'] as String?
+      : config['keep-comments-config'] as String?;
+
   if (keepCommentsConfigFile != null && keepCommentsConfigFile.isNotEmpty) {
     final configFile = File(keepCommentsConfigFile);
     if (await configFile.exists()) {
-      print('正在从 $keepCommentsConfigFile 加载保留注释的路径...');
+      print('正在从文件 $keepCommentsConfigFile 加载额外的保留注释路径...');
       try {
         final lines = await configFile.readAsLines();
         for (final line in lines) {
           final trimmedLine = line.trim();
           if (trimmedLine.isNotEmpty && !trimmedLine.startsWith('#')) {
-            // 规范化路径，统一使用 / 作为分隔符，并添加到集合中
+            // 规范化路径并添加到同一个集合中
             keepCommentsPaths.add(p.normalize(trimmedLine).replaceAll('\\', '/'));
           }
         }
-        print('加载了 ${keepCommentsPaths.length} 条保留注释的路径规则。');
       } catch (e) {
         print('警告: 读取或解析保留注释配置文件 $keepCommentsConfigFile 时出错: $e');
       }
@@ -163,6 +262,8 @@ Future<void> main(List<String> arguments) async {
       print('警告: 指定的保留注释配置文件 $keepCommentsConfigFile 不存在。');
     }
   }
+
+  // --- 新增/修改区域结束 ---
 
 
   print('开始分析目录: ${currentDirectory.path}');
@@ -183,7 +284,7 @@ Future<void> main(List<String> arguments) async {
 
 
   // 加载 .gitignore 规则，并始终忽略输出文件本身和 .git 目录
-  final gitignorePatterns = await loadGitignore(currentDirectory, outputFile);
+  final gitignorePatterns = await loadGitignore(currentDirectory, outputFile, configFilePath);
   final outputBuffer = StringBuffer();
   final processedFiles = <String>{}; // 跟踪已添加的文件，避免重复
 
@@ -407,13 +508,16 @@ void printUsage(ArgParser parser) {
 
 // 加载 .gitignore 文件并返回正则表达式模式列表
 Future<List<RegExp>> loadGitignore(
-    Directory rootDir, String outputFileName) async {
+    Directory rootDir, String outputFileName, String? configFileName) async {
   // (之前的实现保持不变, 但添加了 .git/ 的忽略)
   final gitignoreFile = File(p.join(rootDir.path, '.gitignore'));
   final patterns = <RegExp>[];
   // 始终忽略 .git 目录和输出文件本身
   patterns.add(createGitignoreRegExp('.git/')); // 明确忽略 .git 目录
   patterns.add(createGitignoreRegExp(outputFileName));
+  if (configFileName != null && configFileName.isNotEmpty) {
+    patterns.add(createGitignoreRegExp(p.basename(configFileName))); // 忽略配置文件本身
+  }
 
   if (await gitignoreFile.exists()) {
     try {

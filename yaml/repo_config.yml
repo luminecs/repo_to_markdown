@@ -1,0 +1,35 @@
+# 项目内容合并工具的配置文件
+
+# 输出文件名
+output: "project_summary_from_config.md"
+
+# 项目类型，例如 "java-maven"
+type: "java-maven"
+
+# 需要跳过的目录列表
+skip-dirs:
+  - "build"
+  - "dist"
+  - ".idea"
+  - "target"
+
+# 需要跳过的文件后缀列表
+skip-extensions:
+  - ".log"
+  - ".tmp"
+
+# 需要跳过的文件名通配符模式列表
+skip-patterns:
+  - "*Test.java"
+  - "temp_*.xml"
+
+# --- 新变化 ---
+# 需要保留注释的文件或目录路径列表。
+# 以前的 `keep-comments-config: path/to/file.txt` 仍然有效，但建议使用下面的列表格式。
+keep-comments-paths:
+  - "mrlib-admin/src/main/java/com/hgzp/web/controller/seaweedfs/BucketController.java"
+  - "mrlib-admin/src/main/java/com/hgzp/web/controller/seaweedfs/S3Controller.java"
+  - "mrlib-framework/src/main/java/com/hgzp/framework/config/SeaweedFSConfig.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedAbortMultipartRequest.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedBucket.java"
+  - "mrlib-framework/src/main/java/com/hgzp/core/page/" # 也可以是目录，会保留该目录下所有文件的注释
