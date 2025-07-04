@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
-import 'package:yaml/yaml.dart';
+import 'package:yaml/yaml.dart'; // --- 新增: 导入 YAML 解析库 ---
 
 // --- 配置 ---
 const String outputFileNameDefault = 'project_content.md'; // 默认输出文件名
@@ -47,7 +47,7 @@ const Set<String> textFileExtensions = {
   '.css',
   '.scss',
   '.less',
-  '.vue',
+  '.vue', // 新增(1/3): 识别 Vue 文件扩展名
   // Web 前端
   '.sh',
   '.bat',
@@ -67,6 +67,9 @@ const Set<String> textFileExtensions = {
 // --- 主要逻辑 ---
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
+  // 添加新的 --to-yaml 选项
+    ..addOption('to-yaml',
+        help: '将一个文本文件（每行一个路径）转换为 YAML 列表格式，打印后退出。')
   // 指定配置文件路径
     ..addOption('config',
         abbr: 'c',
@@ -80,11 +83,11 @@ Future<void> main(List<String> arguments) async {
         abbr: 'e', // 'e' for exclude
         defaultsTo: '',
         help: '需要跳过的目录列表，以逗号分隔 (例如 "build,dist,.idea")。')
-    ..addOption('skip-extensions', // 跳过后缀选项
+    ..addOption('skip-extensions', // 新增：跳过后缀选项
         abbr: 'x', // 'x' for extensions
         defaultsTo: '',
         help: '需要跳过的文件后缀列表，以逗号分隔，带点 (例如 ".kt,.log")。')
-    ..addOption('skip-patterns', // 跳过通配符模式选项
+    ..addOption('skip-patterns', // 新增：跳过通配符模式选项
         abbr: 'p', // 'p' for patterns
         defaultsTo: '',
         help: '需要跳过的文件名通配符模式列表，以逗号分隔 (例如 "Test*.java,*.tmp")。')
@@ -102,12 +105,23 @@ Future<void> main(List<String> arguments) async {
     exit(1);
   }
 
+  // --- 处理 --to-yaml 转换模式 ---
+  if (argResults.wasParsed('to-yaml')) {
+    final inputFile = argResults['to-yaml'] as String?;
+    if (inputFile == null || inputFile.isEmpty) {
+      stderr.writeln('错误: --to-yaml 选项需要一个文件路径作为参数。');
+      exit(1);
+    }
+    await convertTxtToYaml(inputFile);
+    exit(0); // 执行完转换后直接退出
+  }
+
   if (argResults['help'] as bool) {
     printUsage(parser);
     exit(0);
   }
 
-  // --- 优化配置文件加载逻辑 ---
+  // --- 新增/修改区域开始: 优化配置文件加载逻辑 ---
 
   // 1. 决定要加载的配置文件路径
   String? configFilePath;
@@ -181,6 +195,7 @@ Future<void> main(List<String> arguments) async {
   final skipPatternsRaw = argResults.wasParsed('skip-patterns')
       ? argResults['skip-patterns'] as String
       : _getStringFromConfig(config['skip-patterns'] ?? argResults['skip-patterns']);
+  // --- 新增/修改区域结束 ---
 
   final currentDirectory = Directory.current;
 
@@ -215,12 +230,12 @@ Future<void> main(List<String> arguments) async {
     }
   }
 
-  // --- 整合所有需要保留注释的路径 (此部分逻辑不变) ---
+  // --- 新增/修改区域开始: 整合所有需要保留注释的路径 (此部分逻辑不变) ---
 
   // 1. 初始化一个集合来存放所有需要保留注释的路径
   final Set<String> keepCommentsPaths = {};
 
-  // 2. 从 YAML 配置中的 `keep-comments-paths` 列表加载路径
+  // 2. 从 YAML 配置中的 `keep-comments-paths` 列表加载路径 (新功能)
   if (config['keep-comments-paths'] is YamlList) {
     print('正在从 YAML 配置中的 `keep-comments-paths` 加载路径...');
     final List<dynamic> pathsFromYaml = config['keep-comments-paths'];
@@ -259,6 +274,9 @@ Future<void> main(List<String> arguments) async {
       print('警告: 指定的保留注释配置文件 $keepCommentsConfigFile 不存在。');
     }
   }
+
+  // --- 新增/修改区域结束 ---
+
 
   print('开始分析目录: ${currentDirectory.path}');
   print('项目类型: ${projectType ?? '未指定'}');
@@ -336,7 +354,44 @@ Future<void> main(List<String> arguments) async {
   }
 }
 
-/// 手动递归处理目录
+// --- 新增/修改区域开始: 添加新的辅助函数 ---
+
+/// 将文本文件转换为 YAML 列表格式并打印到控制台。
+Future<void> convertTxtToYaml(String filePath) async {
+  final inputFile = File(filePath);
+  if (!await inputFile.exists()) {
+    stderr.writeln('错误: 输入文件不存在: $filePath');
+    exit(1);
+  }
+
+  try {
+    final lines = await inputFile.readAsLines();
+    final buffer = StringBuffer();
+
+    // 打印 YAML 键，方便用户复制
+    buffer.writeln('keep-comments-paths:');
+
+    for (final line in lines) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.isNotEmpty && !trimmedLine.startsWith('#')) {
+        // 格式化为 YAML 列表项，并用双引号包裹路径以确保安全
+        // 同时统一路径分隔符为 /
+        final normalizedPath = trimmedLine.replaceAll('\\', '/');
+        buffer.writeln('  - "$normalizedPath"');
+      }
+    }
+
+    print(buffer.toString());
+  } catch (e) {
+    stderr.writeln('错误: 读取或处理文件 $filePath 时发生错误: $e');
+    exit(1);
+  }
+}
+
+// --- 新增/修改区域结束 ---
+
+
+/// **新增：手动递归处理目录**
 Future<void> processDirectoryRecursively(
     Directory directory,
     String rootDir,
@@ -417,7 +472,7 @@ Future<void> processDirectoryRecursively(
 }
 
 
-/// 统一的跳过逻辑检查函数
+/// **新增：统一的跳过逻辑检查函数**
 /// relativePath: 规范化后的相对路径 (相对于项目根目录)
 /// skipDirs: --skip-dirs 参数解析后的集合 (仅在 isDirectory 为 true 时检查)
 /// gitignorePatterns: .gitignore 解析后的正则列表
@@ -495,8 +550,9 @@ RegExp _wildcardToRegExp(String wildcard) {
 void printUsage(ArgParser parser) {
   // (之前的实现保持不变)
   print('用法: dart <脚本文件名>.dart [选项]');
-  print('\n扫描当前目录中的文本文件并生成 Markdown 输出。\n');
-  print('选项:');
+  print('\n该工具主要用于扫描项目文件并生成合并的 Markdown 文件。');
+  print('它还提供一个辅助功能，用于将文本列表转换为 YAML 格式。');
+  print('\n主要功能选项:');
   print(parser.usage);
 }
 
@@ -797,7 +853,7 @@ String getMarkdownLanguage(String filePath) {
     case '.css': return 'css';
     case '.scss': return 'scss';
     case '.less': return 'less';
-    case '.vue': return 'vue'; // 为 Vue 文件指定语言标识符
+    case '.vue': return 'vue'; // 新增(2/3): 为 Vue 文件指定语言标识符
     case '.sh': return 'shell';
     case '.sql': return 'sql';
     case '.gradle': return 'groovy'; // .gradle 文件通常是 Groovy
@@ -833,7 +889,7 @@ String removeComments(String content, String filePath) {
   String cleanedContent = content;
 
   try {
-    // 为 Vue 文件提供专门的注释移除逻辑
+    // 新增(3/3): 为 Vue 文件提供专门的注释移除逻辑
     if (extension == '.vue') {
       // 1. 移除 HTML 风格的注释 <!-- ... --> (用于 <template>)
       cleanedContent = cleanedContent.replaceAll(
