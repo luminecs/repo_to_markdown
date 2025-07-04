@@ -4,14 +4,24 @@
 output: "project_summary_from_config.md"
 
 # 项目类型，例如 "java-maven"
-type: "java-maven"
+#type: "java-maven"
 
 # 需要跳过的目录列表
 skip-dirs:
   - "build"
-  - "dist"
+  - "node_modules"
+  - ".gradle"
   - ".idea"
+  - "gradle"
+  - ".mvn"
   - "target"
+  - "bin"
+  - "doc"
+  - "logs"
+  - "sql"
+  - "mybatis-plus-generator"
+  - "mrlib-generator"
+  - "忘了"
 
 # 需要跳过的文件后缀列表
 skip-extensions:
@@ -20,11 +30,25 @@ skip-extensions:
 
 # 需要跳过的文件名通配符模式列表
 skip-patterns:
-  - "*Test.java"
-  - "temp_*.xml"
+  - "*lock.json"
+  - "*.bat"
+  - "*.bat"
+  - ".git*"
+  - "*.cmd"
+  - "*.md"
+  - ".gitkeep"
+  - ".keep"
+  - "mise.toml"
+  - "*logback*"
+  - "*logback*"
+  - "ie.html"
+  - "ie.html"
+  - "vueWaterfallEasy.js"
+  - "data.json"
+  - "diff.txt"
 
-# --- 新变化 ---
 # 需要保留注释的文件或目录路径列表。
+# 也可以是目录，会保留该目录下所有文件的注释
 # 以前的 `keep-comments-config: path/to/file.txt` 仍然有效，但建议使用下面的列表格式。
 keep-comments-paths:
   - "mrlib-admin/src/main/java/com/hgzp/web/controller/seaweedfs/BucketController.java"
@@ -32,4 +56,19 @@ keep-comments-paths:
   - "mrlib-framework/src/main/java/com/hgzp/framework/config/SeaweedFSConfig.java"
   - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedAbortMultipartRequest.java"
   - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedBucket.java"
-  - "mrlib-framework/src/main/java/com/hgzp/core/page/" # 也可以是目录，会保留该目录下所有文件的注释
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedCompleteMultipartRequest.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedCreateBucketRequest.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedGetObjectRequest.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedInitiateMultipartRequest.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedInitiateMultipartResponse.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedPart.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedPresignPartRequest.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedPresignUrlResponse.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedPutObjectRequest.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/model/seaweedfs/WeedS3Object.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/service/S3Service.java"
+  - "mrlib-system/src/main/java/com/hgzp/system/service/impl/S3ServiceImpl.java"
+  - "mrlib-ui-vue3/mrlib-admin/src/api/seaweedfs.js"
+  - "mrlib-ui-vue3/mrlib-admin/src/views/seaweedfs/Buckets.vue"
+  - "mrlib-ui-vue3/mrlib-admin/src/views/seaweedfs/Files.vue"
+  - "mrlib-ui-vue3/mrlib-admin/src/composables/useUppy.js"
