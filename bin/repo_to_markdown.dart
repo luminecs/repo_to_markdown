@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:path/path.dart' as p;
-import 'package:yaml/yaml.dart'; // --- 新增: 导入 YAML 解析库 ---
+import 'package:yaml/yaml.dart';
 
 // --- 配置 ---
 const String outputFileNameDefault = 'project_content.md'; // 默认输出文件名
@@ -47,7 +47,7 @@ const Set<String> textFileExtensions = {
   '.css',
   '.scss',
   '.less',
-  '.vue', // 新增(1/3): 识别 Vue 文件扩展名
+  '.vue',
   // Web 前端
   '.sh',
   '.bat',
@@ -67,12 +67,10 @@ const Set<String> textFileExtensions = {
 // --- 主要逻辑 ---
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
-  // --- 新增/修改区域开始 ---
-  // 添加一个新的选项来指定配置文件路径
+  // 指定配置文件路径
     ..addOption('config',
         abbr: 'c',
         help: '指定一个 YAML 配置文件路径。如果未指定，将自动尝试加载当前目录的 "repo_config.yml"。')
-  // --- 新增/修改区域结束 ---
     ..addOption('type', abbr: 't', help: '指定项目类型 (例如, java-maven)。')
     ..addOption('output',
         abbr: 'o',
@@ -82,11 +80,11 @@ Future<void> main(List<String> arguments) async {
         abbr: 'e', // 'e' for exclude
         defaultsTo: '',
         help: '需要跳过的目录列表，以逗号分隔 (例如 "build,dist,.idea")。')
-    ..addOption('skip-extensions', // 新增：跳过后缀选项
+    ..addOption('skip-extensions', // 跳过后缀选项
         abbr: 'x', // 'x' for extensions
         defaultsTo: '',
         help: '需要跳过的文件后缀列表，以逗号分隔，带点 (例如 ".kt,.log")。')
-    ..addOption('skip-patterns', // 新增：跳过通配符模式选项
+    ..addOption('skip-patterns', // 跳过通配符模式选项
         abbr: 'p', // 'p' for patterns
         defaultsTo: '',
         help: '需要跳过的文件名通配符模式列表，以逗号分隔 (例如 "Test*.java,*.tmp")。')
@@ -109,7 +107,7 @@ Future<void> main(List<String> arguments) async {
     exit(0);
   }
 
-  // --- 新增/修改区域开始: 优化配置文件加载逻辑 ---
+  // --- 优化配置文件加载逻辑 ---
 
   // 1. 决定要加载的配置文件路径
   String? configFilePath;
@@ -183,7 +181,6 @@ Future<void> main(List<String> arguments) async {
   final skipPatternsRaw = argResults.wasParsed('skip-patterns')
       ? argResults['skip-patterns'] as String
       : _getStringFromConfig(config['skip-patterns'] ?? argResults['skip-patterns']);
-  // --- 新增/修改区域结束 ---
 
   final currentDirectory = Directory.current;
 
@@ -218,12 +215,12 @@ Future<void> main(List<String> arguments) async {
     }
   }
 
-  // --- 新增/修改区域开始: 整合所有需要保留注释的路径 (此部分逻辑不变) ---
+  // --- 整合所有需要保留注释的路径 (此部分逻辑不变) ---
 
   // 1. 初始化一个集合来存放所有需要保留注释的路径
   final Set<String> keepCommentsPaths = {};
 
-  // 2. 从 YAML 配置中的 `keep-comments-paths` 列表加载路径 (新功能)
+  // 2. 从 YAML 配置中的 `keep-comments-paths` 列表加载路径
   if (config['keep-comments-paths'] is YamlList) {
     print('正在从 YAML 配置中的 `keep-comments-paths` 加载路径...');
     final List<dynamic> pathsFromYaml = config['keep-comments-paths'];
@@ -262,9 +259,6 @@ Future<void> main(List<String> arguments) async {
       print('警告: 指定的保留注释配置文件 $keepCommentsConfigFile 不存在。');
     }
   }
-
-  // --- 新增/修改区域结束 ---
-
 
   print('开始分析目录: ${currentDirectory.path}');
   print('项目类型: ${projectType ?? '未指定'}');
@@ -342,7 +336,7 @@ Future<void> main(List<String> arguments) async {
   }
 }
 
-/// **新增：手动递归处理目录**
+/// 手动递归处理目录
 Future<void> processDirectoryRecursively(
     Directory directory,
     String rootDir,
@@ -423,7 +417,7 @@ Future<void> processDirectoryRecursively(
 }
 
 
-/// **新增：统一的跳过逻辑检查函数**
+/// 统一的跳过逻辑检查函数
 /// relativePath: 规范化后的相对路径 (相对于项目根目录)
 /// skipDirs: --skip-dirs 参数解析后的集合 (仅在 isDirectory 为 true 时检查)
 /// gitignorePatterns: .gitignore 解析后的正则列表
@@ -803,7 +797,7 @@ String getMarkdownLanguage(String filePath) {
     case '.css': return 'css';
     case '.scss': return 'scss';
     case '.less': return 'less';
-    case '.vue': return 'vue'; // 新增(2/3): 为 Vue 文件指定语言标识符
+    case '.vue': return 'vue'; // 为 Vue 文件指定语言标识符
     case '.sh': return 'shell';
     case '.sql': return 'sql';
     case '.gradle': return 'groovy'; // .gradle 文件通常是 Groovy
@@ -839,7 +833,7 @@ String removeComments(String content, String filePath) {
   String cleanedContent = content;
 
   try {
-    // 新增(3/3): 为 Vue 文件提供专门的注释移除逻辑
+    // 为 Vue 文件提供专门的注释移除逻辑
     if (extension == '.vue') {
       // 1. 移除 HTML 风格的注释 <!-- ... --> (用于 <template>)
       cleanedContent = cleanedContent.replaceAll(
