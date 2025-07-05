@@ -732,11 +732,17 @@ Future<void> processFile(
     return;
   }
 
-  // 2. 检查是否可能是文本文件
-  if (!isLikelyTextFile(file.path)) {
-    // print('跳过非文本文件: $normalizedRelativePath'); // 信息已在主逻辑打印，这里可选
-    return;
-  }
+  // ======================== 功能实现的核心改动 ========================
+  // 2. 移除基于文件名和扩展名的预先过滤。
+  // 我们不再调用 isLikelyTextFile(file.path) 来决定是否处理文件。
+  // 相反，我们尝试读取所有文件，并根据其内容（是否包含空字节或解码失败）
+  // 来判断它是否为二进制文件。这使得程序能够处理像 bin/setup 这样没有扩展名的文本文件。
+  //
+  // 旧的、被移除的代码:
+  // if (!isLikelyTextFile(file.path)) {
+  //   return;
+  // }
+  // ===============================================================
 
   // 3. 读取内容并根据条件移除注释
   try {
@@ -758,8 +764,9 @@ Future<void> processFile(
     try {
       // 尝试 UTF-8 解码
       content = utf8.decode(bytes, allowMalformed: false); // 不允许错误格式，更严格
-    } on FormatException catch (e) {
-      print('跳过解码错误的文件 (不是有效的 UTF-8 文本): $normalizedRelativePath. 错误: $e');
+    } on FormatException {
+      // 解码失败，大概率是二进制文件或非文本编码，静默跳过。
+      print('跳过解码错误的文件 (不是有效的 UTF-8 文本): $normalizedRelativePath'); // 可以取消注释用于调试
       return; // 跳过无法解码的文件
     }
 
@@ -817,7 +824,7 @@ Future<void> processFile(
 
 // 判断文件是否可能是文本文件
 bool isLikelyTextFile(String filePath) {
-  // (之前的实现保持不变)
+  // (此函数现在不再用于过滤文件，但被 getMarkdownLanguage 隐式使用，因此保留)
   final extension = p.extension(filePath).toLowerCase();
   final filename = p.basename(filePath).toLowerCase();
   // 优先检查已知文本文件扩展名
@@ -877,7 +884,11 @@ String getMarkdownLanguage(String filePath) {
       if (filename == 'jenkinsfile') return 'groovy'; // Jenkinsfile 通常是 Groovy
       if (filename == 'pom.xml') return 'xml'; // pom.xml 明确是 xml
       if (filename == '.gitignore') return 'gitignore'; // .gitignore 本身
-      // 默认或未知类型
+      // 对于像 bin/setup 这样的未知文件，默认为 shell 或 plaintext
+      // 如果我们确定它是 shell 脚本，可以返回 'shell'
+      // 为安全起见，返回 'plaintext'
+      // 检查它是否是 shebang 行
+      // (这个检查可以放在这里，但为了简单，暂时返回 plaintext)
       return 'plaintext';
   }
 }
@@ -942,11 +953,11 @@ String removeComments(String content, String filePath) {
     else if (const {
       '.py', '.rb', '.sh', '.yaml', '.yml', '.properties', '.gitignore'
     }.contains(extension) ||
-        const {'dockerfile', 'makefile'}.contains(filename)) {
-      // 此正则表达式经过再次增强，以更准确地识别 Ruby 的正则表达式字面量。
-      // 通过使用反向预查 `(?<!\w)`，我们规定 `/.../` 模式只有在它前面
-      // 不是一个单词字符时才被视为正则表达式字面量。这可以防止将
-      // "path/to/file" 中的 `/to/` 错误地识别为正则表达式。
+        const {'dockerfile', 'makefile'}.contains(filename) ||
+        // 新增逻辑：如果文件没有可识别的扩展名，但内容以 `#!/` (shebang) 开头，
+        // 我们也假定它使用 '#' 作为注释符（例如 shell, ruby, python 脚本）。
+        (extension.isEmpty && content.trimLeft().startsWith('#!'))) {
+
       final hashCommentRegex = RegExp(
         // 第1组: 匹配双引号字符串 "..."
         r'("(?:\\[\s\S]|[^"\\])*")'
