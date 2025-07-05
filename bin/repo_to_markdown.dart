@@ -312,12 +312,19 @@ Future<void> main(List<String> arguments) async {
       // 检查 pom.xml 是否需要跳过
       if (!shouldSkip(normalizedRelativePomPath, skipDirs, gitignorePatterns, skipExtensions, skipPatternsRegex, isDirectory: false)) {
         bool keepCommentsForPom = false;
-        for (final keepPath in keepCommentsPaths) {
-          if (normalizedRelativePomPath == keepPath) {
-            keepCommentsForPom = true;
-            break;
+        // ======================== 功能增强：支持全局保留注释 ========================
+        // 检查是否存在全局通配符 "*"
+        if (keepCommentsPaths.contains('*')) {
+          keepCommentsForPom = true;
+        } else {
+          for (final keepPath in keepCommentsPaths) {
+            if (normalizedRelativePomPath == keepPath) {
+              keepCommentsForPom = true;
+              break;
+            }
           }
         }
+        // ======================================================================
         await processFile(
             pomFile, currentDirectory.path, outputBuffer, gitignorePatterns, skipExtensions, skipPatternsRegex, keepCommentsForPom, normalizedRelativePomPath);
         processedFiles.add(p.normalize(pomFile.path)); // 记录已处理
@@ -451,16 +458,27 @@ Future<void> processDirectoryRecursively(
 
       // 检查文件是否应被跳过
       if (!shouldSkip(normalizedRelativePath, null, gitignorePatterns, skipExtensions, skipPatternsRegex, isDirectory: false)) {
+
+        // ======================== 功能增强：支持全局保留注释 ========================
         // 检查此文件是否需要保留注释
         bool shouldPreserveComments = false;
-        // 遍历所有需要保留注释的路径规则
-        for (final keepPath in keepCommentsPaths) {
-          // 检查是精确的文件匹配，还是位于需要保留注释的目录下
-          if (normalizedRelativePath == keepPath || normalizedRelativePath.startsWith('$keepPath/')) {
-            shouldPreserveComments = true;
-            break; // 找到匹配规则后即可中断循环
+
+        // 新增逻辑：首先检查是否存在全局通配符 "*"
+        if (keepCommentsPaths.contains('*')) {
+          // 如果存在，则对所有文件都保留注释
+          shouldPreserveComments = true;
+        } else {
+          // 否则，执行原有的路径和目录匹配逻辑
+          // 遍历所有需要保留注释的路径规则
+          for (final keepPath in keepCommentsPaths) {
+            // 检查是精确的文件匹配，还是位于需要保留注释的目录下
+            if (normalizedRelativePath == keepPath || normalizedRelativePath.startsWith('$keepPath/')) {
+              shouldPreserveComments = true;
+              break; // 找到匹配规则后即可中断循环
+            }
           }
         }
+        // ======================================================================
 
         // 处理文件，并传入是否保留注释的标志
         await processFile(entity, rootDir, buffer, gitignorePatterns, skipExtensions, skipPatternsRegex, shouldPreserveComments, normalizedRelativePath);
@@ -732,17 +750,8 @@ Future<void> processFile(
     return;
   }
 
-  // ======================== 功能实现的核心改动 ========================
   // 2. 移除基于文件名和扩展名的预先过滤。
   // 我们不再调用 isLikelyTextFile(file.path) 来决定是否处理文件。
-  // 相反，我们尝试读取所有文件，并根据其内容（是否包含空字节或解码失败）
-  // 来判断它是否为二进制文件。这使得程序能够处理像 bin/setup 这样没有扩展名的文本文件。
-  //
-  // 旧的、被移除的代码:
-  // if (!isLikelyTextFile(file.path)) {
-  //   return;
-  // }
-  // ===============================================================
 
   // 3. 读取内容并根据条件移除注释
   try {
