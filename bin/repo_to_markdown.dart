@@ -943,9 +943,33 @@ String removeComments(String content, String filePath) {
       '.py', '.rb', '.sh', '.yaml', '.yml', '.properties', '.gitignore'
     }.contains(extension) ||
         const {'dockerfile', 'makefile'}.contains(filename)) {
-      // 匹配行首的 # (允许前面有空格) 或 行内空格后的 #
-      cleanedContent = cleanedContent.replaceAll(
-          RegExp(r'^\s*#.*|(?<=\s)#.*', multiLine: true), '');
+      // 此正则表达式经过再次增强，以更准确地识别 Ruby 的正则表达式字面量。
+      // 通过使用反向预查 `(?<!\w)`，我们规定 `/.../` 模式只有在它前面
+      // 不是一个单词字符时才被视为正则表达式字面量。这可以防止将
+      // "path/to/file" 中的 `/to/` 错误地识别为正则表达式。
+      final hashCommentRegex = RegExp(
+        // 第1组: 匹配双引号字符串 "..."
+        r'("(?:\\[\s\S]|[^"\\])*")'
+        // 第2组: 匹配单引号字符串 '...'
+        r"|('(?:\\[\s\S]|[^'\\])*')"
+        // 第3组: 匹配 Ruby 的正则表达式字面量 /.../。
+        // (?<!\w) 是一个反向预查，确保斜杠前不是字母/数字/下划线。
+        r'|(?<!\w)(\/(?:\\\/|[^\/])*\/\w*)'
+        // 第4组: 匹配井号 (#) 注释。
+        r'|(#.*)',
+        multiLine: true,
+      );
+
+      cleanedContent = cleanedContent.replaceAllMapped(hashCommentRegex, (match) {
+        // 如果匹配到的是注释 (现在是第4组)，则将其替换为空字符串（删除）。
+        // 捕获组的索引会因前面的可选组而改变，所以要检查所有可能的非注释组。
+        if (match.group(4) != null) {
+          return '';
+        } else {
+          // 否则，匹配到的是字符串或正则表达式字面量 (组1, 2,或3)，必须原样返回。
+          return match.group(0)!;
+        }
+      });
     }
     // SQL 注释 -- ... 和 /* ... */
     else if (extension == '.sql') {
